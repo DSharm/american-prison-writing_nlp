@@ -70,9 +70,24 @@ def word_cloud(normalized_text):
     plt.axis("off")
     #plt.savefig("whitehouse_word_cloud.pdf", format = 'pdf')
 
-def make_group_corpora(df):
+def make_group_corpora(df,group_col,text_col='normalized_text'):
 
     nlp = spacy.load("en")
+    # aggregate texts by group:
+    df_agg  = df.groupby(group_col).size().reset_index(name='count')
+    df_agg_text = pd.DataFrame(df.groupby(group_col)[text_col].sum()).reset_index()
+
+    df2 = df_agg_text.merge(df_agg)
+    df2.sort_values(by='count', inplace=True, ascending=False)
+    df2 = df2[:20]
+    fileids = list(df2[group_col])
+    print(fileids)
+    corpora = []
+    for index, row in df2.iterrows():
+        corpora.append(row[text_col])
+
+    
+    return fileids, corpora, df2[[group_col,'count']]
 
 def kl_divergence(X, Y):
     P = X.copy()
@@ -115,3 +130,86 @@ def Divergence(corpus1, corpus2, difference="KL"):
             return scipy.stats.wasserstein_distance(P['frequency'], Q['frequency'], u_weights=None, v_weights=None).statistic
         except:
             return scipy.stats.wasserstein_distance(P['frequency'], Q['frequency'], u_weights=None, v_weights=None)
+
+
+
+def make_heat_map(fileids,corpora,divergence_type='KL'):
+    L = []
+    for p in corpora:
+        l = []
+        for q in corpora:
+            l.append(Divergence(p,q, difference = divergence_type))
+        L.append(l)
+    M = np.array(L)
+    fig = plt.figure()
+    div = pd.DataFrame(M, columns = fileids, index = fileids)
+    ax = sns.heatmap(div)
+    print("Divergence Type:", divergence_type)
+    plt.show()
+
+def prep_classification_data(df,category_col,keep=[],true_cat='',holdOut=0.2):
+    df['category'] = df[category_col]
+
+    # binary race
+    df = df[df['category'].isin(keep)]
+
+    # T/F category
+    df['category'] = [s == true_cat for s in df[category_col]]
+
+    train_data_df, test_data_df = lucem_illud_2020.trainTestSplit(df, holdBackFraction=holdOut)
+
+    TFVectorizer = sklearn.feature_extraction.text.TfidfVectorizer(max_df=100, min_df=2, stop_words='english', norm='l2')
+    TFVects = TFVectorizer.fit_transform(train_data_df['text'])
+
+    train_data_df['vect'] = [np.array(v).flatten() for v in TFVects.todense()]
+
+    #Create vectors
+    TFVects_test = TFVectorizer.transform(test_data_df['text'])
+    test_data_df['vect'] = [np.array(v).flatten() for v in TFVects_test.todense()]
+
+    return train_data_df, test_data_df
+
+def classification(train_data_df,test_data_df,classifier):
+
+    if classifier=="LogisticRegression":
+        clf = sklearn.linear_model.LogisticRegression(penalty='l2')
+
+    if classifier == "naiveBayes":
+        clf = sklearn.naive_bayes.BernoulliNB()
+
+    if classifier == "bag":
+        clf = sklearn.ensemble.BaggingClassifier(tree, n_estimators=100, max_samples=0.8, random_state=1) 
+    
+    if classifier == "svm":
+        clf = sklearn.svm.SVC(kernel='linear', probability = False)
+    
+    if classifier == "nn":
+        clf = sklearn.neural_network.MLPClassifier()
+    
+    clf.fit(np.stack(train_data_df['vect'], axis=0), train_data_df['category'])
+
+    print("Training Accuracy:")
+    print(clf.score(np.stack(train_data_df['vect'], axis=0), train_data_df['category']))
+    print("Testing Accuracy:")
+    print(clf.score(np.stack(test_data_df['vect'], axis=0), test_data_df['category']))
+
+    return clf
+
+def evaluation(classifier, test_data_df,true_cat):
+    # predict
+    test_data_df['predict'] = classifier.predict(np.stack(test_data_df['vect'], axis=0))
+
+    # precision, recall, f1 score
+    
+    print("Precision:")
+    print(sklearn.metrics.precision_score(test_data_df['category'], test_data_df['predict']))
+    print("Recall:")
+    print(sklearn.metrics.recall_score(test_data_df['category'], test_data_df['predict']))
+    print("F1 Score:")
+    print(sklearn.metrics.f1_score(test_data_df['category'], test_data_df['predict']))
+
+    print("True Category is:",true_cat)
+    lucem_illud_2020.plotMultiROC(classifier, test_data_df)
+    lucem_illud_2020.plotConfusionMatrix(classifier, test_data_df)
+    print(lucem_illud_2020.evaluateClassifier(classifier, test_data_df))   
+
