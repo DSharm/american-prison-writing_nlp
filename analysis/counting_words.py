@@ -68,7 +68,7 @@ def word_cloud(normalized_text):
     wc = wordcloud.WordCloud(background_color="white", max_words=500, width= 1000, height = 1000, mode ='RGBA', scale=.5).generate(' '.join(normalized_text.sum()))
     plt.imshow(wc)
     plt.axis("off")
-    #plt.savefig("whitehouse_word_cloud.pdf", format = 'pdf')
+    plt.savefig("wordcloud.png", format = 'png')
 
 def make_group_corpora(df,group_col,text_col='normalized_text'):
 
@@ -178,29 +178,31 @@ def classification(train_data_df,test_data_df,classifier):
         clf = sklearn.naive_bayes.BernoulliNB()
 
     if classifier == "bag":
+        tree = sklearn.tree.DecisionTreeClassifier(max_depth=10) #Create an instance of our decision tree classifier.
         clf = sklearn.ensemble.BaggingClassifier(tree, n_estimators=100, max_samples=0.8, random_state=1) 
     
-    if classifier == "svm":
+    if classifier == "SVM":
         clf = sklearn.svm.SVC(kernel='linear', probability = False)
     
-    if classifier == "nn":
+    if classifier == "NeuralNet":
         clf = sklearn.neural_network.MLPClassifier()
     
     clf.fit(np.stack(train_data_df['vect'], axis=0), train_data_df['category'])
-
+    print(classifier)
     print("Training Accuracy:")
     print(clf.score(np.stack(train_data_df['vect'], axis=0), train_data_df['category']))
     print("Testing Accuracy:")
     print(clf.score(np.stack(test_data_df['vect'], axis=0), test_data_df['category']))
+    print("\n")
 
     return clf
 
-def evaluation(classifier, test_data_df,true_cat):
+def evaluation(classifier_name, classifier, test_data_df,true_cat):
     # predict
     test_data_df['predict'] = classifier.predict(np.stack(test_data_df['vect'], axis=0))
 
     # precision, recall, f1 score
-    
+    print(classifier_name)
     print("Precision:")
     print(sklearn.metrics.precision_score(test_data_df['category'], test_data_df['predict']))
     print("Recall:")
