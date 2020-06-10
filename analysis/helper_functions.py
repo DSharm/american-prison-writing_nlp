@@ -41,7 +41,7 @@ import os.path #For checking if files exist
 import os #For making directories
 
 import nltk
-
+import gensim
 
 def wordCounter(normalized_text):
     wordLst = normalized_text.sum()
@@ -214,4 +214,97 @@ def evaluation(classifier_name, classifier, test_data_df,true_cat):
     lucem_illud_2020.plotMultiROC(classifier, test_data_df)
     lucem_illud_2020.plotConfusionMatrix(classifier, test_data_df)
     print(lucem_illud_2020.evaluateClassifier(classifier, test_data_df))   
+
+def word_2_vec(df,normalized_sent_col='normalized_sents'):
+    W2V = gensim.models.word2vec.Word2Vec(df[normalized_sent_col].sum())
+
+    return W2V
+
+def visualize_W2V(W2V,numWords=70):
+    # Visualization #2 of first word2vec
+    targetWords = W2V.wv.index2word[:numWords]
+
+    wordsSubMatrix = []
+    for word in targetWords:
+        wordsSubMatrix.append(W2V[word])
+    wordsSubMatrix = np.array(wordsSubMatrix)
+    wordsSubMatrix
+
+    pcaWords = sklearn.decomposition.PCA(n_components = 50).fit(wordsSubMatrix)
+    reducedPCA_data = pcaWords.transform(wordsSubMatrix)
+    #T-SNE is theoretically better, but you should experiment
+    tsneWords = sklearn.manifold.TSNE(n_components = 2).fit_transform(reducedPCA_data)
+
+    fig = plt.figure(figsize = (10,6))
+    ax = fig.add_subplot(111)
+    ax.set_frame_on(False)
+    plt.scatter(tsneWords[:, 0], tsneWords[:, 1], alpha = 0)#Making the points invisible 
+    for i, word in enumerate(targetWords):
+        ax.annotate(word, (tsneWords[:, 0][i],tsneWords[:, 1][i]), size =  20 * (numWords - i) / numWords)
+    plt.xticks(())
+    plt.yticks(())
+    plt.show()
+    plt.savefig("w2v_viz.png", format = 'png')
+
+def most_similar_table(W2V,list_words):
+    dict_similar = {}
+    for word in list_words:
+        dict_similar[word] = [(x[0],round(x[1],2)) for x in W2V.most_similar(word)]
+    
+    dict_df = pd.DataFrame(dict([ (k,pd.Series(v)) for k,v in dict_similar.items() ]))
+    
+    return dict_df
+
+def d2v(df,key_words,tagged_col='TaggedTexts',norm_word_col='normalized_words',title_col='title',size=100):
+    taggedDocs = []
+    for index, row in df.iterrows():
+        #Just doing a simple keyword assignment
+        docKeywords = [s for s in keywords if s in row[norm_word_col]]
+        #print(docKeywords)
+        docKeywords.append(row[title_col])
+        taggedDocs.append(gensim.models.doc2vec.LabeledSentence(words = row[norm_word_col], tags = docKeywords))
+    df[tagged_col] = taggedDocs
+
+    D2V = gensim.models.doc2vec.Doc2Vec(df[tagged_col], size = size) #Limiting to 100 dimensions
+
+    return D2V 
+
+
+def d2v_similar_heatmap(D2V,df,equation1,equation2,title_col='title'):
+    eq1 = D2V.docvecs.most_similar(equation1, topn=10 )
+    list1 = [x[0] for x in eq1]
+
+    eq2 = D2V.docvecs.most_similar(equation2, topn=10 )
+    list2 = [x[0] for x in eq2]
+
+    targetDocs1 = df[df[title_col].isin(list1)][title_col]
+    targetDocs2 = df[df[title_col].isin(list2)][title_col]
+
+    heatmap_doc_similar(targetDocs1,D2V)
+    heatmap_doc_similar(targetDocs2,D2V)
+
+def heatmap_doc_similar(targetDocs,d2v):
+    heatmapMatrixD = []
+
+    for tagOuter in targetDocs:
+        column = []
+        tagVec = d2v.docvecs[tagOuter].reshape(1, -1)
+        for tagInner in targetDocs:
+            column.append(sklearn.metrics.pairwise.cosine_similarity(tagVec, d2v.docvecs[tagInner].reshape(1, -1))[0][0])
+        heatmapMatrixD.append(column)
+        heatmapMatrixD = np.array(heatmapMatrixD)
+    
+    fig, ax = plt.subplots()
+    hmap = ax.pcolor(heatmapMatrixD, cmap='terrain')
+    cbar = plt.colorbar(hmap)
+
+    cbar.set_label('cosine similarity', rotation=270)
+    a = ax.set_xticks(np.arange(heatmapMatrixD.shape[1]) + 0.5, minor=False)
+    a = ax.set_yticks(np.arange(heatmapMatrixD.shape[0]) + 0.5, minor=False)
+
+    a = ax.set_xticklabels(targetDocs, minor=False, rotation=270)
+    a = ax.set_yticklabels(targetDocs, minor=False)
+
+
+
 

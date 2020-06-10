@@ -77,3 +77,9 @@ def norm_sent(df):
     df['normalized_sents'] = df['tokenized_sents'].apply(lambda x: [lucem_illud_2020.normalizeTokens(s, lemma=False) for s in x])
 
     return df
+
+def norm_words(df):
+    df['tokenized_words'] = df['text'].apply(lambda x: lucem_illud_2020.word_tokenize(x))
+    df['normalized_words'] = df['tokenized_words'].apply(lambda x: lucem_illud_2020.normalizeTokens(x, lemma=False))
+
+    return df
