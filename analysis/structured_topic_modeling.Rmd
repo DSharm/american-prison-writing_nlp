@@ -1,0 +1,293 @@
+---
+title: "Content Analysis of American Prison Writing Archive - Structured Topic Modeling"
+author: "Damini Sharma"
+output: html_document
+---
+
+```{r setup, warning=FALSE , message=FALSE, include=FALSE}
+#Set Up
+# load necessary packages 
+libs <- c("tidyverse", "stringr", "readr", "dplyr", "ggplot2", "readstata13","foreign",
+          "magrittr","lubridate","here","ggrepel","treemapify","packcircles", "ggalluvial","ggrepel",
+          "extrafont","ggfittext","cowplot","googleway","ggspatial","sf","rnaturalearth",
+          "rnaturalearthdata","rgeos","ggridges","jsonlite","janitor","AER","stargazer","gridExtra",
+          "haven","purrr","broom","knitr","kableExtra","Synth","microsynth", "rstanarm","lme4","tidyr","topicmodels","stm","glmnet")
+
+lapply(libs, library, character.only=TRUE)
+```
+
+```{r load_clean_data, results='hide', echo = TRUE}
+# references:
+# https://cbail.github.io/SICSS_Topic_Modeling.html
+# https://cran.r-project.org/web/packages/stm/vignettes/stmVignette.pdf
+# https://juliasilge.com/blog/evaluating-stm/
+
+df <- read.csv(paste0(here(),'/data/APW_final.csv'), stringsAsFactors = FALSE)
+
+# Clean up Race and Sex categories 
+df <- df %>% 
+  mutate(race_clean = case_when(
+    race == "White (non-Hispanic)" ~ "White",
+    race == "African American" ~ "Black",
+    race == "Latina/o / Hispanic" ~ "Hispanic",
+    race == "Multiracial" ~ "Multiracial",
+    race == "No information" ~ "No Info",
+    TRUE ~ "Other"
+  )) %>% 
+  mutate(sex_clean = case_when(
+    gender == "Male" ~ "Male",
+    gender == "Female" ~ "Female",
+    gender == "No information" ~ "No Info",
+    TRUE ~ "Other"
+    
+  )) %>% 
+  select(-race,-gender) %>% 
+  rename(race = race_clean) %>% 
+  rename(sex = sex_clean) %>% 
+  mutate(text = gsub('[\n]+',' ',text),
+         text = gsub('[//]+',' ',text),
+         text = gsub('[\\]','',text),
+         text = gsub('[^a-zA-Z0-9 \']',' ',text))
+```
+
+
+```{r summary_stats}
+# Create Summary statistics
+page <- df %>% count(pages) 
+race <- df %>% count(race) %>% mutate(pct = (n / sum(n))*100) %>% arrange(-pct)
+sex <- df %>% count(sex) %>% mutate(pct = (n / sum(n))*100) %>% arrange(-pct)
+state <- df %>% count(state) %>% mutate(pct = (n / sum(n))*100) %>% arrange(-pct) %>% top_n(10)
+
+kable_obj_race <- kable(race,'html',digits = 2, col.names = c("Race","N","Percent"),
+                     format.args = list(decimal.mark = '.', big.mark = ",")) %>%
+    kable_styling(bootstrap_options = "striped", full_width = F)
+
+kable_obj_sex <- kable(sex,'html',digits = 2, col.names = c("Sex","N","Percent"),
+                     format.args = list(decimal.mark = '.', big.mark = ",")) %>%
+    kable_styling(bootstrap_options = "striped", full_width = F)
+
+kable_obj_state <- kable(state,'html',digits = 2, col.names = c("State","N","Percent"),
+                     format.args = list(decimal.mark = '.', big.mark = ",")) %>%
+    kable_styling(bootstrap_options = "striped", full_width = F)
+
+#save_kable(kable_obj_race,'results/kable_obj_race.png')
+kable_obj_race
+kable_obj_sex
+kable_obj_state
+
+sample <- df[sample(nrow(df), 10), 'title']
+
+kable_obj_sample <- kable(sample,'html',col.names=c("Sample of Titles")) %>%
+    kable_styling(bootstrap_options = "striped", full_width = F)
+kable_obj_sample
+```
+
+```{r process_corpus}
+# Process corpus using inbuilt functions
+processed <- textProcessor(df$text, metadata = df)
+out <- prepDocuments(processed$documents, processed$vocab, processed$meta)
+docs <- out$documents
+vocab <- out$vocab
+meta <-out$meta
+```
+
+
+
+As a first pass, try running a model with 10 topics. To improve the modeling, also pass in race, sex, and state. 
+```{r run_model, echo=TRUE, results='hide'}
+# Fit model
+stm_model <- stm(documents = out$documents, vocab = out$vocab,
+              K = 10, prevalence= ~race + sex + state,
+              max.em.its = 75, data = out$meta,
+              init.type = "Spectral", verbose = FALSE)
+
+```
+
+Topics resulting from this model
+
+```{r get_labels}
+label_topics <- labelTopics(stm_model, 1:10)
+label_topics
+```
+
+```{r plot_models}
+pdf("topics.pdf", width=10, height=8.5)
+plot(stm_model)
+dev.off()
+plot(stm_model)
+
+```
+
+Save the output of findThoughts, which finds documents that load heavily on a given topic
+
+```{r get_thoughts}
+variables = 10
+
+for(i in 1:variables){
+  rows = 5
+  output <- matrix(ncol=1, nrow=rows)
+  output[,1] <- findThoughts(stm_model, texts=meta$text, n = 5, topics = i)$docs[[1]]
+  output <- data.frame(output)
+  #print(output)
+  write.csv(output,paste0("results/thoughts",i,".csv"), row.names = FALSE)
+
+}
+
+thoughts3 <- findThoughts(stm_model, texts=meta$text, n = 2, topics = 3)$docs[[1]]
+thoughts3
+```
+
+Use the searchk function to figure out the optimal number of topics
+```{r searchK, eval=FALSE}
+
+# Takes very long to run so not running in this iteration 
+sk<-searchK(out$documents,out$vocab,K=c(5,10,15,20))
+
+pdf("sk.pdf", width=10, height=8.5)
+plot(sk)
+dev.off()
+plot(sk)
+```
+
+
+Bringing in the metadata
+
+```{r plot_covariate}
+# Estimate "effect" of given covariate on the prevalence of a topic - bringing in the metadaa 
+out$meta$race <- as.factor(out$meta$race)
+out$meta$sex <- as.factor(out$meta$sex)
+out$meta$state <- as.factor(out$meta$state)
+
+prep <- estimateEffect(1:10 ~race + sex + state, stm_model,
+                       meta = out$meta, uncertainty = "Global")
+summary(prep, topics=4)
+
+pdf("black_white.pdf", width=10, height=8.5)
+plot(prep, covariate = "race", topics = 1:10, model = stm_model, method="difference",
+     cov.value1 = "Black", cov.value2 = "White",
+     xlab = "White ... Black",
+     main = "Differences in Topics - Black vs White",
+     xlim = c(-.1, .1), labeltype = "custom",
+     custom.labels = c('1: Violent',
+                       '2: Correctional System',
+                       '3: Religious',
+                       '4: Race',
+                       '5: Legal',
+                       '6: Cell',
+                       '7: Society',
+                       '8: Health',
+                       '9: System',
+                       '10: Prison-Misc'))
+dev.off()
+#plot_bw
+pdf("male_female.pdf", width=10, height=8.5)
+plot(prep, covariate = "sex", topics = 1:10, model = stm_model, method="difference",
+     cov.value1 = "Female", cov.value2 = "Male",
+     xlab = "Male ... Female",
+     main = "Differences in Topics - Male vs Female",
+     xlim = c(-.1, .1), labeltype = "custom",
+     custom.labels = c('1: Violent',
+                       '2: Correctional System',
+                       '3: Religious',
+                       '4: Race',
+                       '5: Legal',
+                       '6: Cell',
+                       '7: Society',
+                       '8: Health',
+                       '9: System',
+                       '10: Prison-Misc'))
+
+dev.off()
+
+
+plot(prep, covariate = "race", topics = 1:10, model = stm_model, method="difference",
+     cov.value1 = "Black", cov.value2 = "White",
+     xlab = "White ... Black",
+     main = "Differences in Topics - Black vs White",
+     xlim = c(-.1, .1), labeltype = "custom",
+     custom.labels = c('1: Violent',
+                       '2: Correctional System',
+                       '3: Religious',
+                       '4: Race',
+                       '5: Legal',
+                       '6: Cell',
+                       '7: Society',
+                       '8: Health',
+                       '9: System',
+                       '10: Prison-Misc'))
+plot(prep, covariate = "sex", topics = 1:10, model = stm_model, method="difference",
+     cov.value1 = "Female", cov.value2 = "Male",
+     xlab = "Male ... Female",
+     main = "Differences in Topics - Male vs Female",
+     xlim = c(-.1, .1), labeltype = "custom",
+     custom.labels = c('1: Violent',
+                       '2: Correctional System',
+                       '3: Religious',
+                       '4: Race',
+                       '5: Legal',
+                       '6: Cell',
+                       '7: Society',
+                       '8: Health',
+                       '9: System',
+                       '10: Prison-Misc'))
+
+```
+
+```{r content, eval=FALSE, include=FALSE}
+
+# STM_content <- stm(out$documents, 
+#                    out$vocab, K = 10,
+#                    prevalence = ~race + sex + state, content =~ race,
+#                    max.em.its = 75, data = out$meta, init.type = "Spectral")
+
+# plot.STM(STM_content, type="perspectives", topics=6)
+# #plot(STM2, topics = 3)
+# #plot.STM()
+
+```
+
+
+```{r perspectives, eval=FALSE, include=FALSE}
+# restrict to just black-white
+df_bw <- df %>% filter(race=="Black"|race=="White")
+
+processed_bw <- textProcessor(df_bw$text, metadata = df_bw)
+out_bw <- prepDocuments(processed_bw$documents, processed_bw$vocab, processed_bw$meta)
+docs_bw <- out_bw$documents
+vocab_bw <- out_bw$vocab
+meta_bw <-out_bw$meta
+
+# STM_content_bw <- stm(out_bw$documents,
+#                      out_bw$vocab, K = 10,
+#                      prevalence = ~race, content =~ race,
+#                      max.em.its = 75, data = out_bw$meta, init.type = "Spectral")
+
+
+
+for(i in 1:10){
+  name <- paste0("stm_plot",i,".pdf")
+  pdf(name, width=10, height=8.5)
+  par(mar=c(1,1,1,1))
+  plot.STM(STM_content_bw, type="perspectives", topics=i)
+  dev.off()
+}
+par(mar=c(1,1,1,1))
+plot.STM(STM_content_bw, type="perspectives", topics=4)
+# 
+# pdf("stm-plot3.pdf", width=10, height=8.5)
+# plot.STM(STM_content_bw, type="perspectives", topics=3)
+# 
+# pdf("stm-plot2.pdf", width=10, height=8.5)
+# plot.STM(STM_content_bw, type="perspectives", topics=2)
+# #plotRemoved(processed$documents, lower.thresh=seq(1,200, by=100))
+
+#plot(STM_content_bw)
+# 
+# label_topics <- labelTopics(STM_content_bw, 1:10)
+# label_topics
+
+
+```
+
+
+

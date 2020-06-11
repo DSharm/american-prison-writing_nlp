@@ -220,7 +220,7 @@ def word_2_vec(df,normalized_sent_col='normalized_sents'):
 
     return W2V
 
-def visualize_W2V(W2V,numWords=70):
+def visualize_W2V(W2V,numWords=70,n_components=70):
     # Visualization #2 of first word2vec
     targetWords = W2V.wv.index2word[:numWords]
 
@@ -230,7 +230,7 @@ def visualize_W2V(W2V,numWords=70):
     wordsSubMatrix = np.array(wordsSubMatrix)
     wordsSubMatrix
 
-    pcaWords = sklearn.decomposition.PCA(n_components = 50).fit(wordsSubMatrix)
+    pcaWords = sklearn.decomposition.PCA(n_components = n_components).fit(wordsSubMatrix)
     reducedPCA_data = pcaWords.transform(wordsSubMatrix)
     #T-SNE is theoretically better, but you should experiment
     tsneWords = sklearn.manifold.TSNE(n_components = 2).fit_transform(reducedPCA_data)
@@ -243,8 +243,9 @@ def visualize_W2V(W2V,numWords=70):
         ax.annotate(word, (tsneWords[:, 0][i],tsneWords[:, 1][i]), size =  20 * (numWords - i) / numWords)
     plt.xticks(())
     plt.yticks(())
-    plt.show()
     plt.savefig("w2v_viz.png", format = 'png')
+    plt.show()
+
 
 def most_similar_table(W2V,list_words):
     dict_similar = {}
@@ -255,7 +256,25 @@ def most_similar_table(W2V,list_words):
     
     return dict_df
 
-def d2v(df,key_words,tagged_col='TaggedTexts',norm_word_col='normalized_words',title_col='title',size=100):
+def most_similar_analogy(positive,compare1,compare2,W2V):
+    dict_all = {}
+    dict_1 = {}
+    dict_1['positive']=positive + compare1
+    dict_1['negative']=compare2
+    d1_name = '+'.join(dict_1['positive']) + '-' + '-'.join(dict_1['negative'])
+    dict_all[d1_name] = W2V.most_similar(dict_1['positive'],dict_1['negative'])
+
+    dict_2 = {}
+    dict_2['positive']=positive + compare2
+    dict_2['negative']=compare1
+    d2_name = '+'.join(dict_2['positive']) + '-' + '-'.join(dict_2['negative'])
+    dict_all[d2_name] = W2V.most_similar(dict_2['positive'],dict_2['negative'])
+
+    dict_df = pd.DataFrame(dict([ (k,pd.Series(v)) for k,v in dict_all.items() ]))
+
+    return dict_df 
+
+def d2v(df,keywords,tagged_col='TaggedTexts',norm_word_col='normalized_words',title_col='title',size=100):
     taggedDocs = []
     for index, row in df.iterrows():
         #Just doing a simple keyword assignment
@@ -271,28 +290,32 @@ def d2v(df,key_words,tagged_col='TaggedTexts',norm_word_col='normalized_words',t
 
 
 def d2v_similar_heatmap(D2V,df,equation1,equation2,title_col='title'):
+
+    #apw_corrupt_prisons = apw_D2V.docvecs.most_similar([ apw_D2V['corrupt']-apw_D2V['prison']], topn=10 )
+
     eq1 = D2V.docvecs.most_similar(equation1, topn=10 )
     list1 = [x[0] for x in eq1]
-
+    #print(list1)
     eq2 = D2V.docvecs.most_similar(equation2, topn=10 )
     list2 = [x[0] for x in eq2]
-
+    #print(list2)
     targetDocs1 = df[df[title_col].isin(list1)][title_col]
     targetDocs2 = df[df[title_col].isin(list2)][title_col]
+    #print(targetDocs1)
+    heatmap_doc_similar(targetDocs1,targetDocs2,D2V)
+    #heatmap_doc_similar(targetDocs2,D2V)
+    return targetDocs1, targetDocs2
 
-    heatmap_doc_similar(targetDocs1,D2V)
-    heatmap_doc_similar(targetDocs2,D2V)
-
-def heatmap_doc_similar(targetDocs,d2v):
+def heatmap_doc_similar(cat1,targetDocs1,cat2,targetDocs2,d2v):
     heatmapMatrixD = []
 
-    for tagOuter in targetDocs:
+    for tagOuter in targetDocs1:
         column = []
         tagVec = d2v.docvecs[tagOuter].reshape(1, -1)
-        for tagInner in targetDocs:
+        for tagInner in targetDocs2:
             column.append(sklearn.metrics.pairwise.cosine_similarity(tagVec, d2v.docvecs[tagInner].reshape(1, -1))[0][0])
         heatmapMatrixD.append(column)
-        heatmapMatrixD = np.array(heatmapMatrixD)
+    heatmapMatrixD = np.array(heatmapMatrixD)
     
     fig, ax = plt.subplots()
     hmap = ax.pcolor(heatmapMatrixD, cmap='terrain')
@@ -301,9 +324,10 @@ def heatmap_doc_similar(targetDocs,d2v):
     cbar.set_label('cosine similarity', rotation=270)
     a = ax.set_xticks(np.arange(heatmapMatrixD.shape[1]) + 0.5, minor=False)
     a = ax.set_yticks(np.arange(heatmapMatrixD.shape[0]) + 0.5, minor=False)
-
-    a = ax.set_xticklabels(targetDocs, minor=False, rotation=270)
-    a = ax.set_yticklabels(targetDocs, minor=False)
+    a = ax.set_ylabel(cat2)
+    a = ax.set_xlabel(cat1)
+    a = ax.set_xticklabels(targetDocs1, minor=False, rotation=270)
+    a = ax.set_yticklabels(targetDocs2, minor=False)
 
 
 
