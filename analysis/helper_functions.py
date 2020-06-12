@@ -1,5 +1,5 @@
 '''
-Helper functions to conduct word counting and divergence analysis
+Helper functions to conduct word counting, divergence, classification, and word embedding analyses
 '''
 #Special module written for this class
 #This provides access to data and to helper functions from previous weeks
@@ -44,6 +44,9 @@ import nltk
 import gensim
 
 def wordCounter(normalized_text):
+    '''
+    Takes a column of normalized texts and outputs a dataframe counting words
+    '''
     wordLst = normalized_text.sum()
     wordCounts = {}
     for word in wordLst:
@@ -65,13 +68,20 @@ def wordCounter(normalized_text):
 
 
 def word_cloud(normalized_text):
+    '''
+    Takes a column of normalized texts and outputs a wordcloud as well as saving the figure in directory
+    '''
+
     wc = wordcloud.WordCloud(background_color="white", max_words=500, width= 1000, height = 1000, mode ='RGBA', scale=.5).generate(' '.join(normalized_text.sum()))
     plt.imshow(wc)
     plt.axis("off")
     plt.savefig("wordcloud.png", format = 'png')
 
 def make_group_corpora(df,group_col,text_col='normalized_text'):
-
+    '''
+    Takes normalized text and aggregates by group column. Used to prep data
+    to look at divergence in text by group, e.g. race
+    '''
     nlp = spacy.load("en")
     # aggregate texts by group:
     df_agg  = df.groupby(group_col).size().reset_index(name='count')
@@ -90,6 +100,9 @@ def make_group_corpora(df,group_col,text_col='normalized_text'):
     return fileids, corpora, df2[[group_col,'count']]
 
 def kl_divergence(X, Y):
+    '''
+    Function carrying out KL divergence calculation between two vectors
+    '''
     P = X.copy()
     Q = Y.copy()
     P.columns = ['P']
@@ -101,6 +114,9 @@ def kl_divergence(X, Y):
     return D_kl
 
 def chi2_divergence(X,Y):
+    '''
+    Function carrying out Chi2 divergence calculation between two vectors
+    '''
     P = X.copy()
     Q = Y.copy()
     P.columns = ['P']
@@ -134,6 +150,10 @@ def Divergence(corpus1, corpus2, difference="KL"):
 
 
 def make_heat_map(fileids,corpora,divergence_type='KL'):
+    '''
+    Given a type of divergence, corpora (with group aggregated text), and ids identifying the
+    groups, this function outputs heatmaps showing divergence by group
+    '''
     L = []
     for p in corpora:
         l = []
@@ -148,6 +168,11 @@ def make_heat_map(fileids,corpora,divergence_type='KL'):
     plt.show()
 
 def prep_classification_data(df,category_col,keep=[],true_cat='',holdOut=0.2):
+    '''
+    Preps data for classification by turning categories into binary (e.g. male and female),
+    doing a train/test split, and creating a TF-IDF matrix. Returns train and test data
+    '''
+
     df['category'] = df[category_col]
 
     # binary race
@@ -170,6 +195,9 @@ def prep_classification_data(df,category_col,keep=[],true_cat='',holdOut=0.2):
     return train_data_df, test_data_df
 
 def classification(train_data_df,test_data_df,classifier):
+    '''
+    Carries out classification using the specified classifier. Returns the fitted model
+    '''
 
     if classifier=="LogisticRegression":
         clf = sklearn.linear_model.LogisticRegression(penalty='l2')
@@ -198,6 +226,10 @@ def classification(train_data_df,test_data_df,classifier):
     return clf
 
 def evaluation(classifier_name, classifier, test_data_df,true_cat):
+    '''
+    Using the fitted model, predicts on test data and computes evaluation metrics
+    '''
+
     # predict
     test_data_df['predict'] = classifier.predict(np.stack(test_data_df['vect'], axis=0))
 
@@ -216,11 +248,17 @@ def evaluation(classifier_name, classifier, test_data_df,true_cat):
     print(lucem_illud_2020.evaluateClassifier(classifier, test_data_df))   
 
 def word_2_vec(df,normalized_sent_col='normalized_sents'):
+    '''
+    Using the gensim implementation of Word2vec, trains a w2v model and returns the output
+    '''
     W2V = gensim.models.word2vec.Word2Vec(df[normalized_sent_col].sum())
 
     return W2V
 
 def visualize_W2V(W2V,numWords=70,n_components=70):
+    '''
+    Takes a w2v model as input and outputs a visualization after carrying out PCA
+    '''
     # Visualization #2 of first word2vec
     targetWords = W2V.wv.index2word[:numWords]
 
@@ -248,6 +286,10 @@ def visualize_W2V(W2V,numWords=70,n_components=70):
 
 
 def most_similar_table(W2V,list_words):
+    '''
+    Given a W2v model and a list of words, outputs a dataframe looking at the words most similar
+    to the given word
+    '''
     dict_similar = {}
     for word in list_words:
         dict_similar[word] = [(x[0],round(x[1],2)) for x in W2V.most_similar(word)]
@@ -257,6 +299,11 @@ def most_similar_table(W2V,list_words):
     return dict_df
 
 def most_similar_analogy(positive,compare1,compare2,W2V):
+    '''
+    Given a word and two other words to compare (e.g. black and white),
+    outputs a dataframe containing the words most similar to positive+compare1-compare2
+    and most similar to positive+compare2-compare1
+    '''
     dict_all = {}
     dict_1 = {}
     dict_1['positive']=positive + compare1
@@ -275,6 +322,10 @@ def most_similar_analogy(positive,compare1,compare2,W2V):
     return dict_df 
 
 def d2v(df,keywords,tagged_col='TaggedTexts',norm_word_col='normalized_words',title_col='title',size=100):
+    '''
+    Given a list of keywords, tags texts with key words and trains a doc2vec model, returning
+    the model object
+    '''
     taggedDocs = []
     for index, row in df.iterrows():
         #Just doing a simple keyword assignment
@@ -290,8 +341,11 @@ def d2v(df,keywords,tagged_col='TaggedTexts',norm_word_col='normalized_words',ti
 
 
 def d2v_similar_heatmap(D2V,df,equation1,equation2,title_col='title'):
+    '''
+    Given a d2v model, dataframe, and equations, returns top 10 documents most similar
+    to each equation and creates heat map comparing these two sets of documents.
 
-    #apw_corrupt_prisons = apw_D2V.docvecs.most_similar([ apw_D2V['corrupt']-apw_D2V['prison']], topn=10 )
+    '''
 
     eq1 = D2V.docvecs.most_similar(equation1, topn=10 )
     list1 = [x[0] for x in eq1]
@@ -307,6 +361,10 @@ def d2v_similar_heatmap(D2V,df,equation1,equation2,title_col='title'):
     return targetDocs1, targetDocs2
 
 def heatmap_doc_similar(cat1,targetDocs1,cat2,targetDocs2,d2v):
+    '''
+    Constructs heat map showing cosine similarity between two sets of documents for
+    two categories, given a d2v model object
+    '''
     heatmapMatrixD = []
 
     for tagOuter in targetDocs1:
