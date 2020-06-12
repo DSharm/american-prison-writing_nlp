@@ -16,9 +16,10 @@ Several groups have taken the lead on combating this ignorance. One such initiat
 For my Computational Content Analysis final paper, I conduct a content analysis of the APWA. Using counting, classification, structured topic modeling, and word embedding techniques, this paper attempts a systematic exploration of this important and unique corpus. None of these techniques can act as substitutes for thoroughly reading and understanding the often-difficult material contained in the essays – doing so would be a disservice to an already-marginalized population. However, content analysis techniques can be used as a useful first step in exploring and generating hypotheses about the essays and what themes they contain.
 
 ## Project:
-- data_ingest.py: contains functions to scrape the APWA data
+- source_files: folder containing following functions to help with scraping and analysis
+    - data_ingest.py: contains functions to scrape the APWA data
+    - helper_functions.py: contain functions used throughout the analysis
 - data_ingest_example.ipynb: contains an example of using data_ingest functions to build the dataset
-- helper_functions.py: contain functions used throughout the analysis
 - counting_divergence.ipynb: notebook conducting word counting and divergence analysis on the corpus
 - classification.ipynb: notebook attempting to use classification methods to predict author demographics
 - structured_modeling.Rmd and structured_modeling.html: R markdown and output for structured modeling analysis
