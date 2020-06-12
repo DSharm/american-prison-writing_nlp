@@ -1,4 +1,5 @@
-# american-prison-writing_nlp
+# Content Analysis of American Prison Writing Archive
+> SOCI 40133 Computational Content Analysis Final Project
 
 ## Table of Contents
 - [Overview](#overview)
