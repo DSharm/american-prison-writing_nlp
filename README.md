@@ -17,6 +17,7 @@ For my Computational Content Analysis final paper, I conduct a content analysis 
 
 ## Project:
 - data_ingest.py: contains functions to scrape the APWA data
+- data_ingest_example.ipynb: contains an example of using data_ingest functions to build the dataset
 - helper_functions.py: contain functions used throughout the analysis
 - counting_divergence.ipynb: notebook conducting word counting and divergence analysis on the corpus
 - classification.ipynb: notebook attempting to use classification methods to predict author demographics
